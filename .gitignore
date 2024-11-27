@@ -2,6 +2,21 @@ dataset_joined/
 dataset_normalized/
 dataset_normalized (copy)/
 garbage_classification/
+dataset_balanced/
 teach_codes/
 trashCode/
 archive.zip
+datasets_copy.zip
+degruyter_comp_comp-2022-0278 1..16 ++.pdf
+Paper2910.pdf
+dataset_processed2/
+Makefile
+dataset_normalized2/
+papers/
+Copy/
+step1_dataset_joined/
+step2_dataset_balanced/
+step3_dataset_normalized/
+test_images/
+*.keras
+Makefile

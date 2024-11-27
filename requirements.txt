@@ -1,2 +1,0 @@
-conda install conda-forge::tqdm
-conda install conda-forge::tensorflow-gpu

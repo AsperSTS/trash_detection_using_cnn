@@ -60,8 +60,7 @@ def graph_count(classes, classes_count):
   plt.xlabel('Clases')
   plt.ylabel('Conteo de clase')
 
-  # Mostrar la gráfica
-  # plt.show()
+  plt.show()
 
 def count_img_in_directory(directorio):
   Path(directorio).mkdir(parents=True, exist_ok=True)
@@ -118,34 +117,26 @@ def apply_clahe(v_channel, clip_limit=1.5, tile_grid_size=(4,4)):
 
   return v_channel_clahe
 def preprocess_image(img):
-    # Ajuste de brillo y contraste
-    # img_bc = cv2.convertScaleAbs(img, alpha=1.1, beta=20)
-    
+
     img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    # img_hsv[..., 2] = apply_clahe(img_hsv[..., 2])
-    img_hsv[..., 2] = _gamma(img_hsv[..., 2], 0.9)
-    
-    # img_hsv[..., 2] = cv2.equalizeHist(img_hsv[..., 2])
-    
+    img_hsv[..., 2] = apply_clahe(img_hsv[..., 2], clip_limit=0.7, tile_grid_size=(8,8))
+    img_hsv[..., 2] = _gamma(img_hsv[..., 2], 1)
     
     img_bgr = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
     
     img_bgr = cv2.GaussianBlur(img_bgr, (3, 3), sigmaX=0.5)
     
     
-    imagen_suavizada = cv2.GaussianBlur(img, (3, 3), sigmaX=0.5)
-    
     img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     sobelx = cv2.Sobel(img_gray, cv2.CV_64F, 1, 0, ksize=3)
     sobely = cv2.Sobel(img_gray, cv2.CV_64F, 0, 1, ksize=3)
     img_sobel = cv2.convertScaleAbs(cv2.magnitude(sobelx, sobely))
-    # img_sobel_rgb = cv2.cvtColor(img_sobel, cv2.COLOR_GRAY2BGR)
 
-    res_stacked = np.hstack((img, img_bgr))
+    # res_stacked = np.hstack((img, img_bgr))
+    # return [img_sobel, res_stacked]
     
-    # img_multi_channel = np.concatenate((img_resized, img_bc_resized, img_sobel_rgb, img_canny_rgb), axis=2)
-    
-    return [img_sobel, res_stacked]
+    # img_multi_channel = np.concatenate((img_bgr, img_sobel), axis=2)
+    return img_bgr, img_sobel
 
 def procesar_directorio(directorio_origen, directorio_destino, size=(256, 256)):
     """
@@ -158,9 +149,7 @@ def procesar_directorio(directorio_origen, directorio_destino, size=(256, 256)):
     for archivo in archivos:
         if archivo.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
             ruta_origen = os.path.join(directorio_origen, archivo)
-            img_vector = preprocess_image(cv2.imread(ruta_origen))
-            
-            
+            # img = preprocess_image(cv2.imread(ruta_origen))
             # img_procesada = redimensionar_con_relleno(ruta_origen, size)
             # ruta_destino = os.path.join(directorio_destino, archivo)
             # img_procesada.save(ruta_destino, format="JPEG")
@@ -174,13 +163,15 @@ if __name__ == "__main__":
   for i in range(0,6):
     classes_count = np.append(classes_count, count_img_in_directory(f"dataset_joined/{classes[i]}"))
   print(classes_count)
-  graph_count(classes, classes_count)
+  
+  # graph_count(classes, classes_count)
   
   # NOW WE CAN JUST RENAME THE FILES AND STORE IN ANOTHER DIRECTORY
   
   # Clase para renombrar los archivos y mandarlos a una carpeta nueva para la preparacion
   # for i in range(0,6):
   #   renombrar_imagenes(f"dataset/{classes[i]}", f"dataset_joined/{classes[i]}", f"{classes[i]}")
+  
   
   for i in range(0,6):
     print(encontrar_resolucion_minima(f"dataset_joined/{classes[i]}"))
@@ -190,13 +181,9 @@ if __name__ == "__main__":
     
     
     
-  img_4 = preprocess_image(cv2.imread("dataset_joined/plasticoYtextil/plasticoYtextil2961.jpg"))
-  #sobel
-  #canny
-  #gray
-  #bc
-  for i in range(0,2):
-    cv2.imshow("Sobel",img_4[i])
-    cv2.waitKey(0)
-  for clase in classes:
-    print(clase)#z
+  # img_1, img_2 = preprocess_image(cv2.imread("dataset_joined/plasticoYtextil/plasticoYtextil2450.jpg"))
+
+  # np.savetxt("foo.csv", img_1, delimiter=",")
+  # # for i in range(0,2):
+  # #   cv2.imshow("Sobel",img_4[i])
+  # #   cv2.waitKey(0)
