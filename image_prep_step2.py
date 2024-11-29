@@ -151,54 +151,122 @@ def apply_clahe(v_channel, clip_limit=1.5, tile_grid_size=(4,4)):
   v_channel_clahe = clahe.apply(v_channel)
 
   return v_channel_clahe
-def preprocess_image(img):
+# def preprocess_image(img):
 
-    img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    # img_hsv[..., 2] = apply_clahe(img_hsv[..., 2], clip_limit=0.7, tile_grid_size=(8,8))
-    img_hsv[..., 2] = _gamma(img_hsv[..., 2], 0.9)
+#     img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+#     # img_hsv[..., 2] = apply_clahe(img_hsv[..., 2], clip_limit=0.7, tile_grid_size=(8,8))
+#     img_hsv[..., 2] = _gamma(img_hsv[..., 2], 0.9)
     
+#     img_bgr = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
+    
+#     img_bgr = cv2.GaussianBlur(img_bgr, (3, 3), sigmaX=0.5)
+    
+    
+#     # img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+#     # sobelx = cv2.Sobel(img_gray, cv2.CV_64F, 1, 0, ksize=3)
+#     # sobely = cv2.Sobel(img_gray, cv2.CV_64F, 0, 1, ksize=3)
+#     # img_sobel = cv2.convertScaleAbs(cv2.magnitude(sobelx, sobely))
+
+#     # res_stacked = np.hstack((img, img_bgr))
+#     # return [img_sobel, res_stacked]
+    
+#     # img_multi_channel = np.concatenate((img_bgr, img_sobel), axis=2)
+#     return img_bgr ##, img_sobel
+
+def preprocess_image(img):
+    # Convertir a HSV
+    img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    
+    # Aplicar CLAHE y gamma en el canal V
+    img_hsv[..., 2] = apply_clahe(img_hsv[..., 2], clip_limit=0.7, tile_grid_size=(6,6))
+    img_hsv[..., 2] = _gamma(img_hsv[..., 2], 1.1)
+    
+    # Volver a BGR
     img_bgr = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
     
+    # Aplicar suavizado adaptativo
+    img_bgr = cv2.bilateralFilter(img_bgr, 5, 30, 30)
+    
+    return img_bgr
+def preprocess_image_with_edges(img):
+    """
+    Preprocesa una imagen RGB incorporando información de bordes
+    mientras mantiene los 3 canales de color.
+    """
+    # Convertir a HSV para el ajuste de brillo/contraste
+    img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    img_hsv[..., 2] = apply_clahe(img_hsv[..., 2], clip_limit=0.7, tile_grid_size=(8,8))
+    img_hsv[..., 2] = _gamma(img_hsv[..., 2], 0.9)
+    
+    # Volver a BGR y aplicar suavizado
+    img_bgr = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
     img_bgr = cv2.GaussianBlur(img_bgr, (3, 3), sigmaX=0.5)
     
+    # Detectar bordes en cada canal por separado
+    edges_b = cv2.Canny(img_bgr[..., 0], 100, 200)
+    edges_g = cv2.Canny(img_bgr[..., 1], 100, 200)
+    edges_r = cv2.Canny(img_bgr[..., 2], 100, 200)
     
-    # img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    # sobelx = cv2.Sobel(img_gray, cv2.CV_64F, 1, 0, ksize=3)
-    # sobely = cv2.Sobel(img_gray, cv2.CV_64F, 0, 1, ksize=3)
-    # img_sobel = cv2.convertScaleAbs(cv2.magnitude(sobelx, sobely))
-
-    # res_stacked = np.hstack((img, img_bgr))
-    # return [img_sobel, res_stacked]
+    # Combinar los bordes detectados
+    edges_combined = cv2.max(cv2.max(edges_b, edges_g), edges_r)
     
-    # img_multi_channel = np.concatenate((img_bgr, img_sobel), axis=2)
-    return img_bgr ##, img_sobel
+    # Crear una máscara de bordes de 3 canales
+    edges_mask = cv2.cvtColor(edges_combined, cv2.COLOR_GRAY2BGR)
+    
+    # Mezclar la imagen original con los bordes detectados
+    # Alpha = 0.75 significa 75% imagen original, 30% bordes
+    alpha = 0.90
+    enhanced_img = cv2.addWeighted(img_bgr, alpha, edges_mask, 1-alpha, 0)
+    
+    return enhanced_img
+# def procesar_directorio(directorio_origen, directorio_destino, clase, size=(160, 160)):
+#     Path(directorio_destino).mkdir(parents=True, exist_ok=True)
+#     archivos = os.listdir(directorio_origen)
 
+#     contador = 1
+
+
+#     for archivo in archivos:
+#         if archivo.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
+#             ruta_origen = os.path.join(directorio_origen, archivo)
+
+#             # img_bgr = preprocess_image(cv2.imread(ruta_origen))
+#             # img_bgr = preprocess_image_with_edges(cv2.imread(ruta_origen))
+#             # img_bgr = cv2.imread(ruta_origen)
+#             # Guardar imagen BGR redimensionada
+#             img_bgr = redimensionar_sin_relleno(cv2.imread(ruta_origen), size)
+#             ruta_destino_bgr = os.path.join(directorio_destino, f"{clase}{contador}.jpg")
+#             cv2.imwrite(ruta_destino_bgr, img_bgr)
+#             contador += 1
+
+#             # Guardar imagen Sobel redimensionada
+# #             img_sobel = redimensionar_sin_relleno(img_sobel, size)
+# #             ruta_destino_sobel = os.path.join(directorio_destino, f"{clase}{contador}.jpg")
+# #             cv2.imwrite(ruta_destino_sobel, img_sobel, [cv2.IMWRITE_JPEG_QUALITY, 80])
+# #             contador += 1
+# # # 
 def procesar_directorio(directorio_origen, directorio_destino, clase, size=(160, 160)):
     Path(directorio_destino).mkdir(parents=True, exist_ok=True)
     archivos = os.listdir(directorio_origen)
-
-    contador = 1
-
-
-    for archivo in archivos:
+    
+    for idx, archivo in enumerate(archivos, 1):
         if archivo.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
             ruta_origen = os.path.join(directorio_origen, archivo)
-
-            img_bgr = preprocess_image(cv2.imread(ruta_origen))
-            # img_bgr = cv2.imread(ruta_origen)
-            # Guardar imagen BGR redimensionada
-            img_bgr = redimensionar_sin_relleno(img_bgr, size)
-            ruta_destino_bgr = os.path.join(directorio_destino, f"{clase}{contador}.jpg")
-            cv2.imwrite(ruta_destino_bgr, img_bgr)
-            contador += 1
-
-            # Guardar imagen Sobel redimensionada
-#             img_sobel = redimensionar_sin_relleno(img_sobel, size)
-#             ruta_destino_sobel = os.path.join(directorio_destino, f"{clase}{contador}.jpg")
-#             cv2.imwrite(ruta_destino_sobel, img_sobel, [cv2.IMWRITE_JPEG_QUALITY, 80])
-#             contador += 1
-# # 
-
+            
+            # Leer y preprocesar
+            img_original = cv2.imread(ruta_origen)
+            if img_original is None:
+                continue
+                
+            # Preprocesar antes de redimensionar
+            img_processed = preprocess_image(img_original)
+            
+            # Redimensionar manteniendo aspecto
+            img_resized = redimensionar_con_relleno(img_processed, size)
+            
+            # Guardar con calidad optimizada
+            ruta_destino = os.path.join(directorio_destino, f"{clase}{idx}.jpg")
+            cv2.imwrite(ruta_destino, img_resized, [cv2.IMWRITE_JPEG_QUALITY, 90])
 if __name__ == "__main__":
 
 	# WE COUNT THE IMAGES PER CLASS TO ADD SYNTETIC IMAGES IN THE FUTURE

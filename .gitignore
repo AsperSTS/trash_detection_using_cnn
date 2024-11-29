@@ -18,5 +18,13 @@ step1_dataset_joined/
 step2_dataset_balanced/
 step3_dataset_normalized/
 test_images/
+step3_dataset_normalized_canny70/
+step3_dataset_normalized_canny75/
+step3_dataset_normalized_canny90/
+step3_dataset_normalized_nocanny/
+step3_dataset_normalized_noprep/
+process_captures/
+step3_dataset_normalized_config6_9000/
+step3_dataset_normalized_28k_config8/
 *.keras
 Makefile

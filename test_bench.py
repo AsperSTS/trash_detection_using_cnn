@@ -2,18 +2,16 @@ import numpy as np
 import tensorflow as tf
 from keras import Sequential
 from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization #type: ignore
+from keras.regularizers import l2 #type: ignore
 import matplotlib.pyplot as plt
 from keras.optimizers import Adam #type: ignore
 from sklearn.metrics import classification_report, confusion_matrix
 import seaborn as sns
+from contextlib import redirect_stdout
 import os
 import gc
 import csv
-
-
-# Crear directorio para métricas
-metrics_dir = "mk1_metrics"
-os.makedirs(metrics_dir, exist_ok=True)
+# 148 seed: run 9
 
 # Configuración GPU (sin cambios)
 gpus = tf.config.list_physical_devices('GPU')
@@ -28,15 +26,27 @@ if gpus:
         print(e)
 
 # Directorio y clases
-train_dir = "step3_dataset_normalized/"
+# train_dir = "step3_dataset_normalized/"
+
+train_dir = "step3_dataset_normalized_noprep"
 classes = np.array(["biologico", "desechos", "metal", "papel", "plasticoYtextil", "vidrio"])
 
+# Parametros informe csv
+preprocess_config = 2
+
 # Parámetros optimizados
-batch_size = 32
+batch_size = 24
 image_size = (160, 160)
-validation_split = 0.2
+validation_split = 0.25
 epochs = 20  # Aumentado para ver mejor la evolución
 learning_rate = 0.0001  # Reducido para un aprendizaje más estable
+seed = tf.random.uniform(shape=[], minval=0, maxval=1000, dtype=tf.int64).numpy() # 407 before
+
+
+
+# seed = 
+print(f"Semilla utilizada: {seed}") 
+
 
 # Función para preprocesamiento de imágenes
 def preprocess_image(image, label):
@@ -49,7 +59,7 @@ def create_dataset(directory, subset):
         directory,
         validation_split=validation_split,
         subset=subset,
-        seed=123,
+        seed=seed, # Before: 123
         image_size=image_size,
         batch_size=batch_size,
         label_mode='categorical',
@@ -108,11 +118,39 @@ model = Sequential([
     Dense(128, activation='relu'),
     BatchNormalization(),
     Dropout(0.5),
-    Dense(64, activation='relu'),
+    Dense(64, activation='relu'),   
     BatchNormalization(),
+
     Dropout(0.5),
     Dense(len(classes), activation='softmax')
 ])
+# model = Sequential([
+#     # Primera capa convolucional
+#     Conv2D(32, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001), input_shape=(image_size[0], image_size[1], 3)),
+#     BatchNormalization(),
+#     Conv2D(32, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
+#     BatchNormalization(),
+#     MaxPooling2D(2, 2),
+#     Dropout(0.3),
+    
+#     # Segunda capa convolucional
+#     Conv2D(64, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
+#     BatchNormalization(),
+#     Conv2D(64, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
+#     BatchNormalization(),
+#     MaxPooling2D(2, 2),
+#     Dropout(0.3),
+    
+#     # Capas densas
+#     Flatten(),
+#     Dense(128, activation='relu', kernel_regularizer=l2(0.001)),
+#     BatchNormalization(),
+#     Dropout(0.6),
+#     Dense(64, activation='relu', kernel_regularizer=l2(0.001)),   
+#     BatchNormalization(),
+#     Dropout(0.6),
+#     Dense(len(classes), activation='softmax')
+# ])
 
 # Compilar el modelo
 optimizer = Adam(learning_rate=learning_rate)
@@ -122,8 +160,21 @@ model.compile(
     metrics=['accuracy', 'AUC']
 )
 
-model.summary()
+# Crear directorio para métricas
+metrics_dir = "mk1_metrics"
+os.makedirs(metrics_dir, exist_ok=True)
 
+
+# Identificador de ejecución basado en la cantidad de carpetas dentro de metrics_dir
+ejecucion = len([d for d in os.listdir(metrics_dir) if os.path.isdir(os.path.join(metrics_dir, d))]) + 1
+run_dir = os.path.join(metrics_dir, f"run_{ejecucion}")
+os.makedirs(run_dir, exist_ok=True)  # Crear directorio para esta ejecución
+
+
+with open(os.path.join(run_dir,f'resumen_modelo_{ejecucion}.txt'), 'w') as f:
+  with redirect_stdout(f):
+    model.summary()
+    
 # Callback para reducir el learning rate
 reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
     monitor='val_loss',
@@ -170,13 +221,9 @@ try:
     print(f'AUC en validación: {val_auc:.4f}')
     
     
-    # Identificador de ejecución basado en la cantidad de carpetas dentro de metrics_dir
-    ejecucion = len([d for d in os.listdir(metrics_dir) if os.path.isdir(os.path.join(metrics_dir, d))]) + 1
-    run_dir = os.path.join(metrics_dir, f"run_{ejecucion}")
-    os.makedirs(run_dir, exist_ok=True)  # Crear directorio para esta ejecución
 
     # Guardar el modelo en el directorio específico
-    model_path = os.path.join(run_dir, "modelo_clasificacion_basura.keras")
+    model_path = os.path.join(run_dir, f"modelo_clasificacion_basura_{ejecucion}.keras")
     model.save(model_path)
 
     # Guardar métricas gráficas
@@ -202,7 +249,7 @@ try:
     plt.legend()
 
     # Guardar gráfica
-    metricas_path = os.path.join(run_dir, 'metricas_entrenamiento.png')
+    metricas_path = os.path.join(run_dir, f'metricas_entrenamiento_{ejecucion}.png')
     plt.tight_layout()
     plt.savefig(metricas_path)
     plt.close()
@@ -241,7 +288,7 @@ try:
     config_csv = os.path.join(metrics_dir, 'configuracion.csv')
     config_fieldnames = [
         'ejecucion', 'batch_size', 'image_size', 'epochs', 
-        'learning_rate', 'optimizer', 'dropout_rates', 'architecture'
+        'learning_rate', 'optimizer', 'seed', 'validation_split','preprocess_configuration'
     ]
     file_exists = os.path.isfile(config_csv)
 
@@ -256,48 +303,49 @@ try:
             'epochs': epochs,
             'learning_rate': learning_rate,
             'optimizer': 'Adam (amsgrad=True)',
-            'dropout_rates': '0.25, 0.5',
-            'architecture': '3 Conv2D + MaxPooling + Dropout + Dense'
+            'seed': seed,
+            'validation_split': validation_split,
+            'preprocess_configuration': preprocess_config
         })
     
      # Obtener predicciones para todas las imágenes de validación en una sola llamada
     print("Generando predicciones para la matriz de confusión...")
     validation_dataset = validation_dataset.prefetch(buffer_size=32)  # Asegurar prefetch
 
-    # Predicciones para todo el conjunto de validación
-    Y_pred_probs = model.predict(validation_dataset, verbose=1)
-    Y_pred = np.argmax(Y_pred_probs, axis=1)
+    # # Predicciones para todo el conjunto de validación
+    # Y_pred_probs = model.predict(validation_dataset, verbose=1)
+    # Y_pred = np.argmax(Y_pred_probs, axis=1)
 
-    # Etiquetas verdaderas (se deben extraer del dataset)
-    Y_true = np.concatenate([np.argmax(y.numpy(), axis=1) for _, y in validation_dataset])
+    # # Etiquetas verdaderas (se deben extraer del dataset)
+    # Y_true = np.concatenate([np.argmax(y.numpy(), axis=1) for _, y in validation_dataset])
 
 
-    plt.figure(figsize=(10, 8))
-    cm = confusion_matrix(Y_true, Y_pred)
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                xticklabels=classes,
-                yticklabels=classes)
-    plt.title('Matriz de Confusión')
-    plt.xlabel('Predicción')
-    plt.ylabel('Valor Real')
-    plt.xticks(rotation=45)
-    plt.yticks(rotation=45)
-    plt.tight_layout()
-    confusion_matrix_path = os.path.join(run_dir, 'matriz_confusion.png')
-    plt.savefig(confusion_matrix_path)
-    plt.close()
+    # plt.figure(figsize=(10, 8))
+    # cm = confusion_matrix(Y_true, Y_pred)
+    # sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+    #             xticklabels=classes,
+    #             yticklabels=classes)
+    # plt.title('Matriz de Confusión')
+    # plt.xlabel('Predicción')
+    # plt.ylabel('Valor Real')
+    # plt.xticks(rotation=45)
+    # plt.yticks(rotation=45)
+    # plt.tight_layout()
+    # confusion_matrix_path = os.path.join(run_dir, 'matriz_confusion.png')
+    # plt.savefig(confusion_matrix_path)
+    # plt.close()
 
-    # Guardar reporte de clasificación
-    report = classification_report(Y_true, Y_pred, target_names=classes, digits=4)
-    report_path = os.path.join(run_dir, 'reporte_clasificacion.txt')
-    with open(report_path, 'w') as f:
-        f.write("Métricas de Evaluación del Modelo\n")
-        f.write("================================\n\n")
-        f.write(f"Precisión en validación: {val_accuracy:.4f}\n")
-        f.write(f"Pérdida en validación: {val_loss:.4f}\n\n")
-        f.write("Reporte de Clasificación:\n")
-        f.write("------------------------\n")
-        f.write(report)
+    # # Guardar reporte de clasificación
+    # report = classification_report(Y_true, Y_pred, target_names=classes, digits=4)
+    # report_path = os.path.join(run_dir, 'reporte_clasificacion.txt')
+    # with open(report_path, 'w') as f:
+    #     f.write("Métricas de Evaluación del Modelo\n")
+    #     f.write("================================\n\n")
+    #     f.write(f"Precisión en validación: {val_accuracy:.4f}\n")
+    #     f.write(f"Pérdida en validación: {val_loss:.4f}\n\n")
+    #     f.write("Reporte de Clasificación:\n")
+    #     f.write("------------------------\n")
+    #     f.write(report)
 
 except Exception as e:
     print(f"Error durante el entrenamiento: {str(e)}")
