@@ -1,10 +1,12 @@
-# Pipeline de Preprocesamiento de Imágenes
+# Clasificación de Residuos con Deep Learning
 
-Este script implementa un pipeline para preprocesar y balancear un conjunto de datos de imágenes, preparándolo para su uso en el entrenamiento de un modelo de aprendizaje automático (por ejemplo, una red neuronal convolucional).
+Este repositorio contiene el código para un sistema de clasificación de residuos que utiliza Deep Learning y técnicas de visión artificial. El sistema está diseñado para identificar y clasificar diferentes tipos de residuos, como orgánico, plástico, vidrio, papel, etc.
 
-## Funcionalidades
+## Pipeline de Preprocesamiento de Imágenes (`image_pipeline.py`)
 
-El pipeline realiza las siguientes operaciones:
+Este script implementa un pipeline para preprocesar y balancear un conjunto de datos de imágenes, preparándolo para su uso en el entrenamiento del modelo de clasificación.
+
+### Funcionalidades
 
 1. **Balanceo de clases:**
    - Aumenta las clases con pocas imágenes mediante técnicas de aumento de datos (data augmentation) para equilibrar el conjunto de datos.
@@ -15,7 +17,7 @@ El pipeline realiza las siguientes operaciones:
    - Reduce el ruido y suaviza las imágenes con un filtro bilateral.
    - Redimensiona las imágenes al tamaño especificado en la configuración.
 
-## Configuración
+### Configuración
 
 La configuración del pipeline se define en la clase `ProcessingConfig`.  Puedes modificar los siguientes parámetros:
 
@@ -24,11 +26,12 @@ La configuración del pipeline se define en la clase `ProcessingConfig`.  Puedes
 * `quality`: Calidad de las imágenes guardadas (0-100).
 * `supported_formats`: Formatos de imagen soportados.
 
-## Uso
+### Uso
 
 1. **Organiza tu conjunto de datos:**
    - Coloca las imágenes en carpetas separadas para cada clase.
    - La estructura del directorio debe ser la siguiente:
+
      ```
      dataset/
        clase1/
@@ -50,28 +53,12 @@ La configuración del pipeline se define en la clase `ProcessingConfig`.  Puedes
 
 El script procesará las imágenes y guardará el conjunto de datos balanceado y preprocesado en un nuevo directorio.
 
-## Dependencias
 
-* Python 3.7+
-* OpenCV (`cv2`)
-* Pillow (`PIL`)
-* TensorFlow (`tensorflow`)
-* Matplotlib (`matplotlib`)
-* NumPy (`numpy`)
+## Entrenamiento del Modelo (`train_model.py`)
 
-Puedes instalar las dependencias con `pip`:
+Este script entrena un modelo de clasificación de imágenes para identificar diferentes tipos de residuos.
 
-```bash
-pip install opencv-python Pillow tensorflow matplotlib numpy
-
-
-
-
-# Entrenamiento de Clasificador de Residuos
-
-Este script entrena un modelo de clasificación de imágenes para identificar diferentes tipos de residuos (orgánico, plástico, vidrio, etc.). 
-
-## Funcionalidades
+### Funcionalidades
 
 * **Construcción del modelo:**
     * Define una arquitectura de red neuronal convolucional (CNN) con capas convolucionales, pooling, dropout y normalización por lotes.
@@ -89,7 +76,7 @@ Este script entrena un modelo de clasificación de imágenes para identificar di
     * Guarda el modelo entrenado en un archivo `.keras`.
     * Guarda un resumen de la arquitectura del modelo en un archivo de texto.
 
-## Configuración
+### Configuración
 
 La configuración del modelo y el entrenamiento se define en la clase `ModelConfig`. Puedes modificar los siguientes parámetros:
 
@@ -105,11 +92,11 @@ La configuración del modelo y el entrenamiento se define en la clase `ModelConf
 * `seed`: Semilla aleatoria para la reproducibilidad.
 * `experiment_name`: Nombre del experimento (opcional).
 
-## Uso
+### Uso
 
 1. **Prepara el conjunto de datos:**
    * Organiza las imágenes de residuos en carpetas separadas para cada clase.
-   * Asegúrate de que el conjunto de datos esté preprocesado y balanceado.
+   * Asegúrate de que el conjunto de datos esté preprocesado y balanceado utilizando `image_pipeline.py`.
 
 2. **Ajusta la configuración:**
    * Modifica los parámetros en la clase `ModelConfig` según tus necesidades.
@@ -122,9 +109,9 @@ El script entrenará el modelo y guardará los resultados en el directorio espec
 ## Dependencias
 
 * Python 3.7+
-* TensorFlow (`tensorflow`)
-* Keras (`keras`)
 * OpenCV (`cv2`)
+* Pillow (`PIL`)
+* TensorFlow (`tensorflow`)
 * Matplotlib (`matplotlib`)
 * NumPy (`numpy`)
 * gspread (`gspread`)
@@ -134,4 +121,4 @@ El script entrenará el modelo y guardará los resultados en el directorio espec
 Puedes instalar las dependencias con `pip`:
 
 ```bash
-pip install tensorflow opencv-python matplotlib numpy gspread google-auth-httplib2 google-auth-oauthlib
+pip install opencv-python Pillow tensorflow matplotlib numpy gspread google-auth-httplib2 google-auth-oauthlib
