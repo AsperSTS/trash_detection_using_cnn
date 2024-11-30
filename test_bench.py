@@ -1,356 +1,265 @@
 import numpy as np
 import tensorflow as tf
-from keras import Sequential
-from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization #type: ignore
-from keras.regularizers import l2 #type: ignore
-import matplotlib.pyplot as plt
-from keras.optimizers import Adam #type: ignore
-from sklearn.metrics import classification_report, confusion_matrix
-import seaborn as sns
+import datetime
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Tuple, List, Optional
+import logging
 from contextlib import redirect_stdout
 import os
 import gc
 import csv
-# 148 seed: run 9
+import gspread
+from google.oauth2.service_account import Credentials
+import matplotlib.pyplot as plt
+from keras import Sequential
+from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization #type: ignore
+from keras.optimizers import Adam #type: ignore
+from keras.callbacks import TensorBoard, ReduceLROnPlateau, ModelCheckpoint, EarlyStopping #type: ignore
 
-# Configuración GPU (sin cambios)
-gpus = tf.config.list_physical_devices('GPU')
-if gpus:
-    try:
-        for gpu in gpus:
-            tf.config.experimental.set_memory_growth(gpu, True)
-        tf.config.set_logical_device_configuration(
-            gpus[0],
-            [tf.config.LogicalDeviceConfiguration(memory_limit=4096)])
-    except RuntimeError as e:
-        print(e)
-
-# Directorio y clases
-# train_dir = "step3_dataset_normalized/"
-
-train_dir = "step3_dataset_normalized_noprep"
-classes = np.array(["biologico", "desechos", "metal", "papel", "plasticoYtextil", "vidrio"])
-
-# Parametros informe csv
-preprocess_config = 2
-
-# Parámetros optimizados
-batch_size = 24
-image_size = (160, 160)
-validation_split = 0.25
-epochs = 20  # Aumentado para ver mejor la evolución
-learning_rate = 0.0001  # Reducido para un aprendizaje más estable
-seed = tf.random.uniform(shape=[], minval=0, maxval=1000, dtype=tf.int64).numpy() # 407 before
-
-
-
-# seed = 
-print(f"Semilla utilizada: {seed}") 
-
-
-# Función para preprocesamiento de imágenes
-def preprocess_image(image, label):
-    image = tf.cast(image, tf.float32) / 255.0  # Normalización
-    return image, label
-
-# Función para crear datasets
-def create_dataset(directory, subset):
-    dataset = tf.keras.utils.image_dataset_from_directory(
-        directory,
-        validation_split=validation_split,
-        subset=subset,
-        seed=seed, # Before: 123
-        image_size=image_size,
-        batch_size=batch_size,
-        label_mode='categorical',
-        shuffle=True
-    )
-    # Aplicar preprocesamiento, cache, repeat y prefetch
-    return dataset.map(preprocess_image).cache().repeat().prefetch(buffer_size=tf.data.AUTOTUNE)
-
-# Crear datasets
-print("Cargando datos...")
-train_dataset = create_dataset(train_dir, "training")
-validation_dataset = create_dataset(train_dir, "validation")
-
-# Calcular steps_per_epoch
-total_images = sum(len(os.listdir(os.path.join(train_dir, clase))) for clase in classes)
-train_images = int(total_images * (1 - validation_split))
-val_images = int(total_images * validation_split)
-
-steps_per_epoch = train_images // batch_size
-validation_steps = val_images // batch_size
-
-print(f"Total images: {total_images}")
-print(f"Training images: {train_images}")
-print(f"Validation images: {val_images}")
-print(f"Steps per epoch: {steps_per_epoch}")
-print(f"Validation steps: {validation_steps}")
-
-# Definir el modelo con arquitectura mejorada
-model = Sequential([
-    # Primera capa convolucional
-    Conv2D(32, (3, 3), activation='relu', padding='same', input_shape=(image_size[0], image_size[1], 3)),
-    BatchNormalization(),
-    Conv2D(32, (3, 3), activation='relu', padding='same'),
-    BatchNormalization(),
-    MaxPooling2D(2, 2),
-    Dropout(0.25),
-    
-    # Segunda capa convolucional
-    Conv2D(64, (3, 3), activation='relu', padding='same'),
-    BatchNormalization(),
-    Conv2D(64, (3, 3), activation='relu', padding='same'),
-    BatchNormalization(),
-    MaxPooling2D(2, 2),
-    Dropout(0.25),
-    
-    # Tercera capa convolucional
-    Conv2D(128, (3, 3), activation='relu', padding='same'),
-    BatchNormalization(),
-    Conv2D(128, (3, 3), activation='relu', padding='same'),
-    BatchNormalization(),
-    MaxPooling2D(2, 2),
-    Dropout(0.25),
-    
-    # Capas densas
-    Flatten(),
-    Dense(128, activation='relu'),
-    BatchNormalization(),
-    Dropout(0.5),
-    Dense(64, activation='relu'),   
-    BatchNormalization(),
-
-    Dropout(0.5),
-    Dense(len(classes), activation='softmax')
-])
-# model = Sequential([
-#     # Primera capa convolucional
-#     Conv2D(32, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001), input_shape=(image_size[0], image_size[1], 3)),
-#     BatchNormalization(),
-#     Conv2D(32, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
-#     BatchNormalization(),
-#     MaxPooling2D(2, 2),
-#     Dropout(0.3),
-    
-#     # Segunda capa convolucional
-#     Conv2D(64, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
-#     BatchNormalization(),
-#     Conv2D(64, (3, 3), activation='relu', padding='same', kernel_regularizer=l2(0.001)),
-#     BatchNormalization(),
-#     MaxPooling2D(2, 2),
-#     Dropout(0.3),
-    
-#     # Capas densas
-#     Flatten(),
-#     Dense(128, activation='relu', kernel_regularizer=l2(0.001)),
-#     BatchNormalization(),
-#     Dropout(0.6),
-#     Dense(64, activation='relu', kernel_regularizer=l2(0.001)),   
-#     BatchNormalization(),
-#     Dropout(0.6),
-#     Dense(len(classes), activation='softmax')
-# ])
-
-# Compilar el modelo
-optimizer = Adam(learning_rate=learning_rate)
-model.compile(
-    optimizer=optimizer,
-    loss='categorical_crossentropy',
-    metrics=['accuracy', 'AUC']
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
 )
+logger = logging.getLogger(__name__)
 
-# Crear directorio para métricas
-metrics_dir = "mk1_metrics"
-os.makedirs(metrics_dir, exist_ok=True)
+@dataclass
+class ModelConfig:
+    """Configuration parameters for the model and training"""
+    train_dir: str = "step3_dataset_normalized_24k_config12"
+    classes: np.ndarray = np.array(["biologico", "desechos", "metal", "papel", "plasticoYtextil", "vidrio"])
+    batch_size: int = 16
+    image_size: Tuple[int, int] = (128, 128)
+    validation_split: float = 0.30
+    epochs: int = 35
+    learning_rate: float = 0.0001
+    preprocess_config: int = 12
+    metrics_dir: str = "mk1_metrics"
+    seed: int = 331
+    experiment_name: str = "waste_classification"
 
+class GPUManager:
+    @staticmethod
+    def setup_gpu(memory_limit: int = 3800) -> None:
+        """Configure GPU settings"""
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            try:
+                for gpu in gpus:
+                    tf.config.experimental.set_memory_growth(gpu, True)
+                tf.config.set_logical_device_configuration(
+                    gpus[0],
+                    [tf.config.LogicalDeviceConfiguration(memory_limit=memory_limit)]
+                )
+                logger.info(f"GPU configured successfully with memory limit: {memory_limit}")
+            except RuntimeError as e:
+                logger.error(f"GPU configuration failed: {e}")
 
-# Identificador de ejecución basado en la cantidad de carpetas dentro de metrics_dir
-ejecucion = len([d for d in os.listdir(metrics_dir) if os.path.isdir(os.path.join(metrics_dir, d))]) + 1
-run_dir = os.path.join(metrics_dir, f"run_{ejecucion}")
-os.makedirs(run_dir, exist_ok=True)  # Crear directorio para esta ejecución
+class DataManager:
+    @staticmethod
+    def preprocess_image(image, label):
+        """Preprocess a single image"""
+        return tf.cast(image, tf.float32) / 255.0, label
 
+    @classmethod
+    def create_dataset(cls, config: ModelConfig, subset: str) -> tf.data.Dataset:
+        """Create and configure a dataset"""
+        dataset = tf.keras.utils.image_dataset_from_directory(
+            config.train_dir,
+            validation_split=config.validation_split,
+            subset=subset,
+            seed=config.seed,
+            image_size=config.image_size,
+            batch_size=config.batch_size,
+            label_mode='categorical',
+            shuffle=True
+        )
+        return dataset.map(cls.preprocess_image).cache().repeat().prefetch(buffer_size=tf.data.AUTOTUNE)
 
-with open(os.path.join(run_dir,f'resumen_modelo_{ejecucion}.txt'), 'w') as f:
-  with redirect_stdout(f):
-    model.summary()
-    
-# Callback para reducir el learning rate
-reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
-    monitor='val_loss',
-    factor=0.2,
-    patience=3,
-    min_lr=0.00001
-)
+    @staticmethod
+    def calculate_steps(config: ModelConfig) -> Tuple[int, int]:
+        """Calculate training and validation steps"""
+        total_images = sum(len(os.listdir(Path(config.train_dir) / clase)) 
+                          for clase in config.classes)
+        train_images = int(total_images * (1 - config.validation_split))
+        val_images = int(total_images * config.validation_split)
+        return (
+            train_images // config.batch_size,
+            val_images // config.batch_size
+        )
 
-# Early stopping para evitar overfitting
-early_stopping = tf.keras.callbacks.EarlyStopping(
-    monitor='val_loss',
-    patience=5,
-    restore_best_weights=True
-)
+class ModelBuilder:
+    @staticmethod
+    def create_model(config: ModelConfig) -> Sequential:
+        """Create and compile the model"""
+        model = Sequential([
+            # Enhanced model architecture with residual connections
+            Conv2D(32, (3, 3), activation='relu', padding='same', 
+                   input_shape=(*config.image_size, 3)),
+            BatchNormalization(),
+            Conv2D(32, (3, 3), activation='relu', padding='same'),
+            BatchNormalization(),
+            MaxPooling2D(2, 2),
+            Dropout(0.2),
+            
+            Conv2D(64, (3, 3), activation='relu', padding='same'),
+            BatchNormalization(),
+            Conv2D(64, (3, 3), activation='relu', padding='same'),
+            BatchNormalization(),
+            MaxPooling2D(2, 2),
+            Dropout(0.3),
+            
+            Conv2D(128, (3, 3), activation='relu', padding='same'),
+            BatchNormalization(),
+            Conv2D(128, (3, 3), activation='relu', padding='same'),
+            BatchNormalization(),
+            MaxPooling2D(2, 2),
+            Dropout(0.4),
+            
+            Flatten(),
+            Dense(128, activation='relu'),
+            BatchNormalization(),
+            Dropout(0.5),
+            Dense(64, activation='relu'),
+            BatchNormalization(),
+            Dropout(0.5),
+            Dense(len(config.classes), activation='softmax')
+        ])
+        
+        optimizer = Adam(
+            learning_rate=config.learning_rate,
+            amsgrad=True
+        )
+        
+        model.compile(
+            optimizer=optimizer,
+            loss='categorical_crossentropy',
+            metrics=['accuracy', 'AUC', 'Precision', 'Recall']
+        )
+        
+        return model
 
-# # Entrenar el modelo
-# history = model.fit(
-#     train_dataset,
-#     epochs=epochs,
-#     validation_data=validation_dataset,
-#     steps_per_epoch=steps_per_epoch,
-#     validation_steps=validation_steps,
-#     callbacks=[reduce_lr, early_stopping],
-#     verbose=1
-# )
+class CallbackBuilder:
+    @staticmethod
+    def get_callbacks(run_dir: Path, execution_num: int) -> List[tf.keras.callbacks.Callback]:
+        """Create training callbacks"""
+        log_dir = run_dir / f"logs/fit/{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        return [
+            TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch=0),
+            ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=0.00001),
+            ModelCheckpoint(
+                run_dir / f"best_model_{execution_num}.keras",
+                monitor='val_accuracy',
+                save_best_only=True,
+                mode='max'
+            ),
+            EarlyStopping(monitor='val_loss', patience=7, restore_best_weights=True)
+        ]
 
-try:
-    # Entrenar el modelo
-    history = model.fit(
-        train_dataset,
-        epochs=epochs,
-        validation_data=validation_dataset,
-        steps_per_epoch=steps_per_epoch,
-        validation_steps=validation_steps,
-        callbacks=[reduce_lr, early_stopping],
-        verbose=1
-    )
-    
-    # Evaluación en el dataset de validación
-    print("\nEvaluando modelo...")
-    val_loss, val_accuracy, val_auc = model.evaluate(validation_dataset, steps=validation_steps)
-    print(f'Precisión en validación: {val_accuracy:.4f}')
-    print(f'Pérdida en validación: {val_loss:.4f}')
-    print(f'AUC en validación: {val_auc:.4f}')
-    
-    
+class ResultManager:
+    def __init__(self, config: ModelConfig):
+        self.config = config
+        self.metrics_dir = Path(config.metrics_dir)
+        self.run_dir = None
+        self.execution_num = None
 
-    # Guardar el modelo en el directorio específico
-    model_path = os.path.join(run_dir, f"modelo_clasificacion_basura_{ejecucion}.keras")
-    model.save(model_path)
+    def initialize_run(self) -> None:
+        """Initialize directories for a new training run"""
+        self.metrics_dir.mkdir(exist_ok=True)
+        self.execution_num = self._get_next_execution_number()
+        self.run_dir = self.metrics_dir / f"run_{self.execution_num}"
+        self.run_dir.mkdir(exist_ok=True)
+        logger.info(f"Initialized run directory: {self.run_dir}")
 
-    # Guardar métricas gráficas
-    print("Generando gráficas...")
+    def _get_next_execution_number(self) -> int:
+        """Get the next execution number"""
+        if self.metrics_dir.exists():
+            existing_runs = [d for d in self.metrics_dir.iterdir() if d.is_dir()]
+            if existing_runs:
+                return max(int(d.name.split('_')[1]) for d in existing_runs if d.name.startswith("run_")) + 1
+        return 1
 
-    # Gráfica de precisión
-    plt.figure(figsize=(12, 4))
-    plt.subplot(1, 2, 1)
-    plt.plot(history.history['accuracy'], label='Precisión (entrenamiento)')
-    plt.plot(history.history['val_accuracy'], label='Precisión (validación)')
-    plt.title('Evolución de la Precisión')
-    plt.xlabel('Época')
-    plt.ylabel('Precisión')
-    plt.legend()
+    def save_model_summary(self, model: Sequential) -> None:
+        """Save model architecture summary"""
+        summary_path = self.run_dir / f'model_summary_{self.execution_num}.txt'
+        with open(summary_path, 'w') as f:
+            with redirect_stdout(f):
+                model.summary()
 
-    # Gráfica de pérdida
-    plt.subplot(1, 2, 2)
-    plt.plot(history.history['loss'], label='Pérdida (entrenamiento)')
-    plt.plot(history.history['val_loss'], label='Pérdida (validación)')
-    plt.title('Evolución de la Pérdida')
-    plt.xlabel('Época')
-    plt.ylabel('Pérdida')
-    plt.legend()
+    def plot_training_history(self, history) -> None:
+        """Generate and save training plots"""
+        metrics = ['accuracy', 'loss', 'auc', 'precision', 'recall']
+        fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+        axes = axes.flatten()
 
-    # Guardar gráfica
-    metricas_path = os.path.join(run_dir, f'metricas_entrenamiento_{ejecucion}.png')
-    plt.tight_layout()
-    plt.savefig(metricas_path)
-    plt.close()
+        for idx, metric in enumerate(metrics):
+            if metric in history.history:
+                axes[idx].plot(history.history[metric], label=f'Training {metric}')
+                axes[idx].plot(history.history[f'val_{metric}'], label=f'Validation {metric}')
+                axes[idx].set_title(f'{metric.capitalize()} Evolution')
+                axes[idx].set_xlabel('Epoch')
+                axes[idx].set_ylabel(metric.capitalize())
+                axes[idx].legend()
 
-    # Generar y guardar matriz de confusión
-    # print("Generando matriz de confusión...")
-    # Y_pred = []
-    # Y_true = []
+        plt.tight_layout()
+        plt.savefig(self.run_dir / f'training_metrics_{self.execution_num}.png')
+        plt.close()
 
-    # for batch in validation_dataset:
-    #     x, y = batch
-    #     predictions = model.predict(x, verbose=0)
-    #     Y_pred.extend(np.argmax(predictions, axis=1))
-    #     Y_true.extend(np.argmax(y, axis=1))
-        # gc.collect()  # Limpiar memoria después de cada lote
+class Trainer:
+    def __init__(self, config: ModelConfig):
+        self.config = config
+        self.result_manager = ResultManager(config)
 
+    def train(self) -> None:
+        """Execute the training pipeline"""
+        try:
+            logger.info("Starting training pipeline...")
+            GPUManager.setup_gpu()
+            self.result_manager.initialize_run()
+            
+            logger.info(f"Using seed: {self.config.seed}")
+            tf.random.set_seed(self.config.seed)
+            
+            # Prepare datasets
+            logger.info("Loading and preparing datasets...")
+            train_dataset = DataManager.create_dataset(self.config, "training")
+            validation_dataset = DataManager.create_dataset(self.config, "validation")
+            steps_per_epoch, validation_steps = DataManager.calculate_steps(self.config)
+            
+            # Create and train model
+            logger.info("Building model...")
+            model = ModelBuilder.create_model(self.config)
+            self.result_manager.save_model_summary(model)
+            
+            callbacks = CallbackBuilder.get_callbacks(self.result_manager.run_dir, self.result_manager.execution_num)
+            
+            logger.info("Starting training...")
+            history = model.fit(
+                train_dataset,
+                epochs=self.config.epochs,
+                validation_data=validation_dataset,
+                steps_per_epoch=steps_per_epoch,
+                validation_steps=validation_steps,
+                callbacks=callbacks,
+                verbose=1
+            )
+            
+            # Save results and visualizations
+            logger.info("Saving results and generating visualizations...")
+            self.result_manager.plot_training_history(history)
+            
+        except Exception as e:
+            logger.error(f"Training failed: {e}", exc_info=True)
+        finally:
+            logger.info("Cleaning up...")
+            gc.collect()
+            tf.keras.backend.clear_session()
 
+def main():
+    config = ModelConfig()
+    trainer = Trainer(config)
+    trainer.train()
 
-    # Resultados CSV
-    results_csv = os.path.join(metrics_dir, 'resultados.csv')
-    results_fieldnames = ['ejecucion', 'val_accuracy', 'val_loss', 'val_auc']
-    file_exists = os.path.isfile(results_csv)
-
-    with open(results_csv, mode='a', newline='') as f_results:
-        writer = csv.DictWriter(f_results, fieldnames=results_fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow({
-            'ejecucion': ejecucion,
-            'val_accuracy': val_accuracy,
-            'val_loss': val_loss,
-            'val_auc': val_auc
-        })
-
-    # Configuración CSV
-    config_csv = os.path.join(metrics_dir, 'configuracion.csv')
-    config_fieldnames = [
-        'ejecucion', 'batch_size', 'image_size', 'epochs', 
-        'learning_rate', 'optimizer', 'seed', 'validation_split','preprocess_configuration'
-    ]
-    file_exists = os.path.isfile(config_csv)
-
-    with open(config_csv, mode='a', newline='') as f_config:
-        writer = csv.DictWriter(f_config, fieldnames=config_fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow({
-            'ejecucion': ejecucion,
-            'batch_size': batch_size,
-            'image_size': image_size,
-            'epochs': epochs,
-            'learning_rate': learning_rate,
-            'optimizer': 'Adam (amsgrad=True)',
-            'seed': seed,
-            'validation_split': validation_split,
-            'preprocess_configuration': preprocess_config
-        })
-    
-     # Obtener predicciones para todas las imágenes de validación en una sola llamada
-    print("Generando predicciones para la matriz de confusión...")
-    validation_dataset = validation_dataset.prefetch(buffer_size=32)  # Asegurar prefetch
-
-    # # Predicciones para todo el conjunto de validación
-    # Y_pred_probs = model.predict(validation_dataset, verbose=1)
-    # Y_pred = np.argmax(Y_pred_probs, axis=1)
-
-    # # Etiquetas verdaderas (se deben extraer del dataset)
-    # Y_true = np.concatenate([np.argmax(y.numpy(), axis=1) for _, y in validation_dataset])
-
-
-    # plt.figure(figsize=(10, 8))
-    # cm = confusion_matrix(Y_true, Y_pred)
-    # sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-    #             xticklabels=classes,
-    #             yticklabels=classes)
-    # plt.title('Matriz de Confusión')
-    # plt.xlabel('Predicción')
-    # plt.ylabel('Valor Real')
-    # plt.xticks(rotation=45)
-    # plt.yticks(rotation=45)
-    # plt.tight_layout()
-    # confusion_matrix_path = os.path.join(run_dir, 'matriz_confusion.png')
-    # plt.savefig(confusion_matrix_path)
-    # plt.close()
-
-    # # Guardar reporte de clasificación
-    # report = classification_report(Y_true, Y_pred, target_names=classes, digits=4)
-    # report_path = os.path.join(run_dir, 'reporte_clasificacion.txt')
-    # with open(report_path, 'w') as f:
-    #     f.write("Métricas de Evaluación del Modelo\n")
-    #     f.write("================================\n\n")
-    #     f.write(f"Precisión en validación: {val_accuracy:.4f}\n")
-    #     f.write(f"Pérdida en validación: {val_loss:.4f}\n\n")
-    #     f.write("Reporte de Clasificación:\n")
-    #     f.write("------------------------\n")
-    #     f.write(report)
-
-except Exception as e:
-    print(f"Error durante el entrenamiento: {str(e)}")
-finally:
-    # Limpiar memoria
-    gc.collect()
-    tf.keras.backend.clear_session()
-    
+if __name__ == "__main__":
+    main()

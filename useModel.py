@@ -6,7 +6,7 @@ from tensorflow.keras.preprocessing import image #type: ignore
 from PIL import Image, ImageTk
 
 # Cargar el modelo guardado
-model = tf.keras.models.load_model("modelo_clasificacion_basura.keras")
+model = tf.keras.models.load_model("waste_classification_model_49.keras")#"modelo_clasificacion_basura.keras")
 
 # Definir las clases
 classes = ["biologico", "desechos", "metal", "papel", "plasticoYtextil", "vidrio"]
@@ -18,7 +18,7 @@ def predict_image():
         return
 
     # Cargar y preprocesar la imagen
-    img = image.load_img(file_path, target_size=(160, 160))
+    img = image.load_img(file_path, target_size=(128, 128))
     img_array = image.img_to_array(img)
     img_array = np.expand_dims(img_array, axis=0)
     img_array = img_array / 255.0
@@ -31,7 +31,7 @@ def predict_image():
 
     # Mostrar la imagen
     img = Image.open(file_path)
-    img = img.resize((160, 160))
+    img = img.resize((128, 128))
     img = ImageTk.PhotoImage(img)
     image_label.config(image=img)
     image_label.image = img

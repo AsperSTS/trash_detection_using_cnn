@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+import datetime
 from keras import Sequential
 from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization # type: ignore
 from keras.optimizers import Adam   # type: ignore
@@ -10,23 +11,31 @@ from contextlib import redirect_stdout
 import os
 import gc
 import csv
+import gspread
+from google.oauth2.service_account import Credentials
+
+
+
+SPREADSHEET_NAME = "EjecucionesProcDigitalDeImagenes"
+SHEET_NAME_RESULTADOS = "resultados"
+SHEET_NAME_CONFIGURACIONES = "configuraciones"
 
 # Configuration class to hold all parameters
 class Config:
     def __init__(self):
-        self.train_dir = "step3_dataset_normalized_28k_config8"
+        self.train_dir = "step3_dataset_normalized_24k_config12"
         # self.train_dir = "step3_dataset_normalized_noprep"
         # self.train_dir = "step3_dataset_normalized_canny70"
         # self.train_dir = "step3_dataset_normalized_config6_9000"
         self.classes = np.array(["biologico", "desechos", "metal", "papel", "plasticoYtextil", "vidrio"])
         self.batch_size = 16
-        self.image_size = (160, 160)
-        self.validation_split = 0.20
-        self.epochs = 10
+        self.image_size = (128, 128)
+        self.validation_split = 0.30
+        self.epochs = 35
         self.learning_rate = 0.0001
-        self.preprocess_config = 6
+        self.preprocess_config = 12
         self.metrics_dir = "mk1_metrics"
-        self.seed =  331 #tf.random.uniform(shape=[], minval=0, maxval=1000, dtype=tf.int64).numpy()
+        self.seed =  331#tf.random.uniform(shape=[], minval=0, maxval=1000, dtype=tf.int64).numpy()
 # GPU Configuration
 def setup_gpu():
     gpus = tf.config.list_physical_devices('GPU')
@@ -36,7 +45,7 @@ def setup_gpu():
                 tf.config.experimental.set_memory_growth(gpu, True)
             tf.config.set_logical_device_configuration(
                 gpus[0],
-                [tf.config.LogicalDeviceConfiguration(memory_limit=4096)])
+                [tf.config.LogicalDeviceConfiguration(memory_limit=3800)])
         except RuntimeError as e:
             print(e)
 
@@ -63,13 +72,13 @@ def create_model(config):
     
     model = Sequential([
         # First convolutional block
-        Conv2D(32, (3, 3), activation='relu', padding='same', 
+        Conv2D(16, (3, 3), activation='relu', padding='same', 
                input_shape=(config.image_size[0], config.image_size[1], 3)),
         BatchNormalization(),
         Conv2D(32, (3, 3), activation='relu', padding='same'),
         BatchNormalization(),
         MaxPooling2D(2, 2),
-        Dropout(0.25),
+        Dropout(0.1),
         
         # Second convolutional block
         Conv2D(64, (3, 3), activation='relu', padding='same'),
@@ -77,7 +86,7 @@ def create_model(config):
         Conv2D(64, (3, 3), activation='relu', padding='same'),
         BatchNormalization(),
         MaxPooling2D(2, 2),
-        Dropout(0.25),
+        Dropout(0.5),
         
         # Third convolutional block
         Conv2D(128, (3, 3), activation='relu', padding='same'),
@@ -89,10 +98,10 @@ def create_model(config):
         
         # Dense layers
         Flatten(),
-        Dense(128, activation='relu'),
+        Dense(64, activation='relu'),
         BatchNormalization(),
         Dropout(0.5),
-        Dense(64, activation='relu'),
+        Dense(32, activation='relu'),
         BatchNormalization(),
         Dropout(0.5),
         Dense(len(config.classes), activation='softmax')
@@ -114,12 +123,13 @@ def get_callbacks():
             factor=0.2,
             patience=3,
             min_lr=0.00001
-        ),
-        tf.keras.callbacks.EarlyStopping(
-            monitor='val_loss',
-            patience=5,
-            restore_best_weights=True
         )
+        # ,
+        # tf.keras.callbacks.EarlyStopping(
+            # monitor='val_loss',
+            # patience=5,
+            # restore_best_weights=True
+        # )
     ]
 
 # Visualization functions
@@ -158,10 +168,70 @@ def get_next_execution_number(metrics_dir):
             )
             return max_execution_num + 1
     return 1
+def save_to_google_sheets(spreadsheet_name, sheet_name, data):
+    """Guarda los datos en una hoja de Google Sheets, creando la hoja si no existe.
 
+    Args:
+        spreadsheet_name: Nombre de la hoja de cálculo de Google Sheets.
+        sheet_name: Nombre de la hoja dentro de la hoja de cálculo.
+        data: Diccionario con los datos a guardar.
+    """
 
-# Results saving functions
+    scopes = [
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive'
+    ]
+    creds = Credentials.from_service_account_file('trashdetectionusingcnn199502-0e33c8aba5ab.json', scopes=scopes)
+
+    client = gspread.authorize(creds)
+
+    # Abre la hoja de cálculo por nombre (no la crea si no existe)
+    spreadsheet = client.open(spreadsheet_name)
+
+    # Intenta abrir la hoja, si no existe, créala con los nombres de los atributos como encabezados
+    try:
+        worksheet = spreadsheet.worksheet(sheet_name)
+    except gspread.WorksheetNotFound:
+        worksheet = spreadsheet.add_worksheet(title=sheet_name, rows="100", cols="20")
+        # Añadir encabezados de atributos
+        header = list(data.keys())
+        worksheet.insert_row(header, 1)
+
+    # Añadir datos como nueva fila
+    new_row = list(data.values())
+    worksheet.append_row(new_row)
 def save_results(config, metrics_dir, execution_num, val_metrics):
+    """Guarda los resultados y la configuración en Google Sheets."""
+
+    save_to_google_sheets(
+        SPREADSHEET_NAME, 
+        SHEET_NAME_RESULTADOS, 
+        {
+            'execution': execution_num,
+            'val_accuracy': val_metrics[1],
+            'val_loss': val_metrics[0],
+            'val_auc': val_metrics[2]
+        }
+    )
+    
+    save_to_google_sheets(
+        SPREADSHEET_NAME,
+        SHEET_NAME_CONFIGURACIONES, 
+        {
+            'execution': execution_num,
+            'batch_size': config.batch_size,
+            'image_size': f"({config.image_size[0]})x({config.image_size[1]})",
+            'epochs': config.epochs,
+            'learning_rate': config.learning_rate,
+            'optimizer': 'Adam (amsgrad=True)',
+            'seed': config.seed,
+            'validation_split': config.validation_split,
+            'preprocess_configuration': config.preprocess_config,
+            'dataset': config.train_dir
+        }
+    )
+# Results saving functions
+def save_results_csv(config, metrics_dir, execution_num, val_metrics):
     save_to_csv(
         os.path.join(metrics_dir, 'resultados.csv'),
         ['execution', 'val_accuracy', 'val_loss', 'val_auc'],
@@ -236,13 +306,16 @@ def train_model():
             with redirect_stdout(f):
                 model.summary()
         
+        log_dir = os.path.join(run_dir, "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
         history = model.fit(
             train_dataset,
             epochs=config.epochs,
             validation_data=validation_dataset,
             steps_per_epoch=steps_per_epoch,
             validation_steps=validation_steps,
-            callbacks=get_callbacks(),
+            # callbacks=get_callbacks(),
+            callbacks=[tensorboard_callback],
             verbose=1
         )
         
