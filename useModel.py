@@ -6,7 +6,7 @@ from tensorflow.keras.preprocessing import image #type: ignore
 from PIL import Image, ImageTk
 
 # Cargar el modelo guardado
-model = tf.keras.models.load_model("waste_classification_model_49.keras")#"modelo_clasificacion_basura.keras")
+model = tf.keras.models.load_model("waste_classification_model_8.keras")#"modelo_clasificacion_basura.keras")
 
 # Definir las clases
 classes = ["biologico", "desechos", "metal", "papel", "plasticoYtextil", "vidrio"]

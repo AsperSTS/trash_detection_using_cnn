@@ -31,7 +31,7 @@ class Config:
         self.batch_size = 16
         self.image_size = (128, 128)
         self.validation_split = 0.30
-        self.epochs = 35
+        self.epochs = 15
         self.learning_rate = 0.0001
         self.preprocess_config = 12
         self.metrics_dir = "mk1_metrics"

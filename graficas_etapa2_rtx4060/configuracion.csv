@@ -1,0 +1,2 @@
+execution,batch_size,image_size,epochs,learning_rate,optimizer,seed,validation_split,preprocess_configuration,dataset
+1,16,"(128, 128)",23,0.0001,Adam (amsgrad=True),331,0.3,12,step3_dataset_normalized_24k_config12

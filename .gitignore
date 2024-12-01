@@ -31,3 +31,5 @@ Makefile
 *.json
 main_modular.py
 step3_dataset_normalized_24k_config12/
+step3_dataset_normalized_24k_NoPreprocessing/
+step3_dataset_normalized_24k_NoPreprocessing2/

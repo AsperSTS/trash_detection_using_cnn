@@ -1,9 +1,10 @@
 import numpy as np
 import tensorflow as tf
 import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Tuple, List, Optional
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from typing import Tuple, List, Optional, Dict
 import logging
 from contextlib import redirect_stdout
 import os
@@ -13,7 +14,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import matplotlib.pyplot as plt
 from keras import Sequential
-from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization #type: ignore
+from keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization, Input #type: ignore
 from keras.optimizers import Adam #type: ignore
 from keras.callbacks import TensorBoard, ReduceLROnPlateau, ModelCheckpoint, EarlyStopping #type: ignore
 
@@ -27,21 +28,25 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ModelConfig:
     """Configuration parameters for the model and training"""
-    train_dir: str = "step3_dataset_normalized_24k_config12"
-    classes: np.ndarray = np.array(["biologico", "desechos", "metal", "papel", "plasticoYtextil", "vidrio"])
-    batch_size: int = 16
+    # train_dir: str = "step3_dataset_normalized_24k_config12"
+    train_dir: str = "step3_dataset_normalized_24k_NoPreprocessing2"
+    classes: np.ndarray = field(default_factory=lambda: np.array(["biologico", "desechos", "metal", "papel", "plasticoYtextil", "vidrio"]))
+    batch_size: int = 32
     image_size: Tuple[int, int] = (128, 128)
-    validation_split: float = 0.30
-    epochs: int = 35
-    learning_rate: float = 0.0001
+    validation_split: float = 0.3
+    epochs: int = 30
+    learning_rate: float = 0.0001 #0.0001 
     preprocess_config: int = 12
-    metrics_dir: str = "mk1_metrics"
-    seed: int = 331
+    metrics_dir: str = "graficas_modelos_rtx2050_final"
+    seed: int = 120 #tf.random.uniform(shape=[], minval=0, maxval=1000, dtype=tf.int64).numpy() #120 
     experiment_name: str = "waste_classification"
+    spreadsheet_name = "EjecucionesProcDigitalDeImagenes"
+    sheet_name_results = "resultados_rtx2050_final"
+    sheet_name_config = "configuraciones_rtx2050_final"
 
 class GPUManager:
     @staticmethod
-    def setup_gpu(memory_limit: int = 3800) -> None:
+    def setup_gpu(memory_limit: int = 4096) -> None:
         """Configure GPU settings"""
         gpus = tf.config.list_physical_devices('GPU')
         if gpus:
@@ -93,43 +98,120 @@ class ModelBuilder:
     @staticmethod
     def create_model(config: ModelConfig) -> Sequential:
         """Create and compile the model"""
-        model = Sequential([
-            # Enhanced model architecture with residual connections
-            Conv2D(32, (3, 3), activation='relu', padding='same', 
-                   input_shape=(*config.image_size, 3)),
-            BatchNormalization(),
-            Conv2D(32, (3, 3), activation='relu', padding='same'),
-            BatchNormalization(),
-            MaxPooling2D(2, 2),
-            Dropout(0.2),
-            
-            Conv2D(64, (3, 3), activation='relu', padding='same'),
-            BatchNormalization(),
-            Conv2D(64, (3, 3), activation='relu', padding='same'),
-            BatchNormalization(),
-            MaxPooling2D(2, 2),
-            Dropout(0.3),
-            
-            Conv2D(128, (3, 3), activation='relu', padding='same'),
-            BatchNormalization(),
-            Conv2D(128, (3, 3), activation='relu', padding='same'),
-            BatchNormalization(),
-            MaxPooling2D(2, 2),
-            Dropout(0.4),
-            
-            Flatten(),
-            Dense(128, activation='relu'),
-            BatchNormalization(),
-            Dropout(0.5),
-            Dense(64, activation='relu'),
-            BatchNormalization(),
-            Dropout(0.5),
-            Dense(len(config.classes), activation='softmax')
-        ])
+        model = Sequential()
+        # Define la capa de entrada
+        input_layer = Input(shape=(*config.image_size, 3))
+
+        # Enhanced model architecture with residual connections
+        x = Conv2D(32, (3, 3), activation='relu', padding='same')(input_layer)
+        x = BatchNormalization()(x)
+        x = Conv2D(32, (3, 3), activation='relu', padding='same')(x)
+        x = BatchNormalization()(x)
+        x = MaxPooling2D(2, 2)(x)
+        x = Dropout(0.2)(x)
+
+        x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+        x = BatchNormalization()(x)
+        x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+        x = BatchNormalization()(x)
+        x = MaxPooling2D(2, 2)(x)
+        x = Dropout(0.3)(x)
+
+        x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+        x = BatchNormalization()(x)
+        x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+        x = BatchNormalization()(x)
+        x = MaxPooling2D(2, 2)(x)
+        x = Dropout(0.4)(x)
+
+        x = Flatten()(x)
+        x = Dense(64, activation='relu')(x)
+        x = BatchNormalization()(x)
+        x = Dropout(0.5)(x)
+        x = Dense(64, activation='relu')(x)
+        x = BatchNormalization()(x)
+        x = Dropout(0.5)(x)
+        output_layer = Dense(len(config.classes), activation='softmax')(x)
+
+        # model = Sequential()
+        # # Define la capa de entrada
+        # input_layer = Input(shape=(*config.image_size, 3))
+
+        # # Enhanced model architecture with residual connections
+        # x = Conv2D(64, (3, 3), activation='relu', padding='same')(input_layer)
+        # x = MaxPooling2D(2, 2)(x)
+        # x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+        # x = MaxPooling2D(2, 2)(x)
+        # x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+        # # x = MaxPooling2D(2, 2)(x)
+        # # x = Conv2D(256, (3, 3), activation='relu', padding='same')(x)
         
+        
+        
+        # # x = BatchNormalization()(x)
+        # # x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+        # # x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+        # # x = BatchNormalization()(x)
+        # # x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+        # # x = BatchNormalization()(x)
+        # # x = MaxPooling2D(2, 2)(x)
+        # # x = Dropout(0.4)(x)
+
+        # x = Flatten()(x)
+        # x = Dense(256, activation='relu')(x)
+        # x = Dense(128, activation='relu')(x)
+        # x = Dense(64, activation='relu')(x)
+        # # x = BatchNormalization()(x)
+        # # x = Dropout(0.5)(x)
+        # # x = Dense(64, activation='relu')(x)
+        # # x = BatchNormalization()(x)
+        # # x = Dropout(0.5)(x)
+        # output_layer = Dense(len(config.classes), activation='softmax')(x)
+        
+        # model = tf.keras.Model(inputs=input_layer, outputs=output_layer)
+        
+        # model = Sequential()
+        # input_layer = Input(shape=(*config.image_size, 3))
+        # # Bloque 1
+        # x = Conv2D(64, (3, 3), activation='relu', padding='same')(input_layer)
+        # x = BatchNormalization()(x)
+        # x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+        # x = BatchNormalization()(x)
+        # x = MaxPooling2D(2, 2)(x)
+        # x = Dropout(0.25)(x)
+
+        # # Bloque 2
+        # x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+        # x = BatchNormalization()(x)
+        # x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+        # x = BatchNormalization()(x)
+        # x = MaxPooling2D(2, 2)(x)
+        # x = Dropout(0.25)(x)
+
+        # # Bloque 3
+        # x = Conv2D(256, (3, 3), activation='relu', padding='same')(x)
+        # x = BatchNormalization()(x)
+        # x = Conv2D(256, (3, 3), activation='relu', padding='same')(x)
+        # x = BatchNormalization()(x)
+        # x = MaxPooling2D(2, 2)(x)
+        # x = Dropout(0.25)(x)
+
+        # # Capas Densas
+        # x = Flatten()(x)
+        # x = Dense(256, activation='relu')(x)
+        # x = BatchNormalization()(x)
+        # x = Dropout(0.5)(x)
+        # x = Dense(128, activation='relu')(x)
+        # x = BatchNormalization()(x)
+        # x = Dropout(0.5)(x)
+        
+        # output_layer = Dense(len(config.classes), activation='softmax')(x)
+        
+        model = tf.keras.Model(inputs=input_layer, outputs=output_layer)
         optimizer = Adam(
-            learning_rate=config.learning_rate,
-            amsgrad=True
+            learning_rate=config.learning_rate
+            # ,
+            # amsgrad=True
         )
         
         model.compile(
@@ -137,8 +219,11 @@ class ModelBuilder:
             loss='categorical_crossentropy',
             metrics=['accuracy', 'AUC', 'Precision', 'Recall']
         )
-        
+
+
+    
         return model
+
 
 class CallbackBuilder:
     @staticmethod
@@ -147,22 +232,26 @@ class CallbackBuilder:
         log_dir = run_dir / f"logs/fit/{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
         return [
             TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch=0),
-            ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=0.00001),
-            ModelCheckpoint(
-                run_dir / f"best_model_{execution_num}.keras",
-                monitor='val_accuracy',
-                save_best_only=True,
-                mode='max'
-            ),
-            EarlyStopping(monitor='val_loss', patience=7, restore_best_weights=True)
+            ReduceLROnPlateau(monitor='val_loss', factor=0.01, patience=1, min_lr=0.00001)
+            # ,
+            # ModelCheckpoint(
+                # run_dir / f"best_model_{execution_num}.keras",
+                # monitor='val_accuracy',
+                # save_best_only=True,
+                # mode='max'
+            # )
+            # ,
+            # EarlyStopping(monitor='val_loss', patience=7, restore_best_weights=True)
         ]
 
 class ResultManager:
     def __init__(self, config: ModelConfig):
+        
         self.config = config
         self.metrics_dir = Path(config.metrics_dir)
         self.run_dir = None
         self.execution_num = None
+
 
     def initialize_run(self) -> None:
         """Initialize directories for a new training run"""
@@ -179,7 +268,82 @@ class ResultManager:
             if existing_runs:
                 return max(int(d.name.split('_')[1]) for d in existing_runs if d.name.startswith("run_")) + 1
         return 1
+    def save_to_google_sheets(self, spreadsheet_name: str, sheet_name: str, data: Dict) -> None:
+        """Guarda los datos en una hoja de Google Sheets, creando la hoja si no existe.
 
+        Args:
+            spreadsheet_name: Nombre de la hoja de cálculo de Google Sheets.
+            sheet_name: Nombre de la hoja dentro de la hoja de cálculo.
+            data: Diccionario con los datos a guardar.
+        """
+
+        try:
+            scopes = [
+                'https://www.googleapis.com/auth/spreadsheets',
+                'https://www.googleapis.com/auth/drive'
+            ]
+            creds = Credentials.from_service_account_file('trashdetectionusingcnn199502-0e33c8aba5ab.json', scopes=scopes)
+
+            client = gspread.authorize(creds)
+
+            # Abre la hoja de cálculo por nombre (no la crea si no existe)
+            spreadsheet = client.open(spreadsheet_name)
+
+            # Intenta abrir la hoja, si no existe, créala con los nombres de los atributos como encabezados
+            try:
+                worksheet = spreadsheet.worksheet(sheet_name)
+            except gspread.WorksheetNotFound:
+                worksheet = spreadsheet.add_worksheet(title=sheet_name, rows="100", cols="20")
+                # Añadir encabezados de atributos
+            
+            for key, value in data.items():
+                if isinstance(value, np.int64):
+                    data[key] = int(value)
+                elif isinstance(value, np.float64):  # Convertir float64 a float
+                    data[key] = float(value)    
+
+            # Añadir datos como nueva fila
+            new_row = list(data.values())
+            worksheet.append_row(new_row)
+
+        except Exception as e:
+            logger.error(f"Error al guardar en Google Sheets: {e}")
+
+
+    def save_individual_metrics(self, val_metrics: List):
+        """Guarda los resultados y la configuración en Google Sheets."""
+        
+        try:
+            self.save_to_google_sheets(
+                self.config.spreadsheet_name, 
+                self.config.sheet_name_results, 
+                {
+                    'execution': self.execution_num,
+                    'val_accuracy': val_metrics[1],
+                    'val_loss': val_metrics[0],
+                    'val_auc': val_metrics[2]
+                }
+            )
+            
+            self.save_to_google_sheets(
+                self.config.spreadsheet_name,
+                self.config.sheet_name_config, 
+                {
+                    'execution': self.execution_num,
+                    'batch_size': self.config.batch_size,
+                    'image_size': f"({self.config.image_size[0]})x({self.config.image_size[1]})",
+                    'epochs': self.config.epochs,
+                    'learning_rate': self.config.learning_rate,
+                    'optimizer': 'Adam (amsgrad=True)',
+                    'seed': self.config.seed,
+                    'validation_split': self.config.validation_split,
+                    'preprocess_configuration': self.config.preprocess_config,
+                    'dataset': self.config.train_dir
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error al guardar las métricas individuales: {e}")
+            
     def save_model_summary(self, model: Sequential) -> None:
         """Save model architecture summary"""
         summary_path = self.run_dir / f'model_summary_{self.execution_num}.txt'
@@ -189,7 +353,7 @@ class ResultManager:
 
     def plot_training_history(self, history) -> None:
         """Generate and save training plots"""
-        metrics = ['accuracy', 'loss', 'auc', 'precision', 'recall']
+        metrics = ['accuracy', 'loss', 'AUC', 'Precision', 'Recall']
         fig, axes = plt.subplots(2, 3, figsize=(15, 10))
         axes = axes.flatten()
 
@@ -200,12 +364,31 @@ class ResultManager:
                 axes[idx].set_title(f'{metric.capitalize()} Evolution')
                 axes[idx].set_xlabel('Epoch')
                 axes[idx].set_ylabel(metric.capitalize())
-                axes[idx].legend()
-
+                axes[idx].legend() 
         plt.tight_layout()
-        plt.savefig(self.run_dir / f'training_metrics_{self.execution_num}.png')
+        plt.savefig(self.run_dir / f'training_metrics_{self.execution_num}.png',dpi=300)
         plt.close()
+    def plot_confusion_matrix(self, model: Sequential, dataset: tf.data.Dataset, class_names: List[str], steps: int) -> None:
+        """Genera y guarda una matriz de confusión."""
+        logger.info("Generating confusion matrix...")
+        y_true = []
+        y_pred = []
 
+        # Recopila etiquetas verdaderas y predicciones
+        for batch, labels in dataset.take(steps):
+            y_true.extend(tf.argmax(labels, axis=1).numpy())
+            predictions = model.predict(batch)
+            y_pred.extend(tf.argmax(predictions, axis=1).numpy())
+
+        cm = confusion_matrix(y_true, y_pred, labels=range(len(class_names)))
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
+        disp.plot(cmap=plt.cm.Blues, xticks_rotation=45)
+
+        # Guardar la matriz de confusión
+        plt.title('Confusion Matrix')
+        plt.savefig(self.run_dir / f'confusion_matrix_{self.execution_num}.png', dpi=300)
+        plt.close()
+        logger.info("Confusion matrix saved.")
 class Trainer:
     def __init__(self, config: ModelConfig):
         self.config = config
@@ -245,9 +428,27 @@ class Trainer:
                 verbose=1
             )
             
+            # Save individual metrics to store them in Google Sheets
+            val_metrics = model.evaluate(validation_dataset, steps=validation_steps)
+            print(f'Validation Accuracy: {val_metrics[1]:.4f}')
+            print(f'Validation Loss: {val_metrics[0]:.4f}')
+            print(f'Validation AUC: {val_metrics[2]:.4f}')
             # Save results and visualizations
+            
+            model.save(os.path.join(self.result_manager.run_dir, f"waste_classification_model_{self.result_manager.execution_num}.keras"))
+            
+            
             logger.info("Saving results and generating visualizations...")
             self.result_manager.plot_training_history(history)
+            self.result_manager.save_individual_metrics(val_metrics)
+            
+            steps_for_confusion = validation_steps  # Puedes ajustar según el tamaño del dataset de validación
+            self.result_manager.plot_confusion_matrix(
+                model,
+                validation_dataset,
+                class_names=self.config.classes.tolist(),
+                steps=steps_for_confusion
+            )
             
         except Exception as e:
             logger.error(f"Training failed: {e}", exc_info=True)
