@@ -8,3 +8,7 @@ google-auth==2.24.0
 google-auth-oauthlib==1.0.0
 dataclasses; python_version < '3.7'
 logging; python_version >= '3.7'
+streamlit 
+opencv-python-headless  
+seaborn 
+pillow

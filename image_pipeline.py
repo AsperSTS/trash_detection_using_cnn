@@ -14,6 +14,7 @@ import cv2
 from PIL import Image, ImageOps
 from tensorflow.keras.preprocessing.image import ImageDataGenerator #type: ignore
 
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -31,16 +32,8 @@ class ProcessingConfig:
     target_class_count: int = 4140
     quality: int = 95
     supported_formats: Tuple[str, ...] = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
-
-@dataclass
-class ImageStats:
-    """Data class to store image statistics"""
-    width: int
-    height: int
-    channels: int
-    mean_brightness: float
-    processing_time: float
-
+    enable_processing: bool = True  # New flag to control image processing
+    
 def timer_decorator(func):
     """Decorator to measure function execution time"""
     @wraps(func)
@@ -52,7 +45,6 @@ def timer_decorator(func):
         logging.info(f"{func.__name__} executed in {execution_time:.2f} seconds")
         return result
     return wrapper
-
 class ImageAugmentor:
     """Handles image augmentation for balancing dataset"""
     def __init__(self, config: ProcessingConfig):
@@ -113,7 +105,6 @@ class ImageAugmentor:
                         break
                 except Exception as e:
                     logging.error(f"Error generating augmented image {i} for class {class_name}: {str(e)}")
-
 class ImageProcessor:
     """Handles image preprocessing and normalization"""
     def __init__(self, config: ProcessingConfig):
@@ -133,15 +124,70 @@ class ImageProcessor:
         clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
         return clahe.apply(v_channel)
 
+    # @timer_decorator
+    # def preprocess_image(self, img: np.ndarray) -> np.ndarray:
+    #     """Preprocess single image"""
+    #     if not self.config.enable_processing:
+    #         return img
+            
+    #     img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    #     img_hsv[..., 2] = self.apply_clahe(img_hsv[..., 2], clip_limit=0.6, tile_grid_size=(6, 6))
+    #     img_hsv[..., 2] = self._gamma(img_hsv[..., 2], 1.1)
+    #     img_bgr = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
+    #     return cv2.bilateralFilter(img_bgr, 5, 30, 30)
     @timer_decorator
     def preprocess_image(self, img: np.ndarray) -> np.ndarray:
-        """Preprocess single image"""
+        """
+        Preprocess single image with more subtle enhancements that preserve original colors
+        
+        Args:
+            img: Input image in BGR format
+        Returns:
+            Preprocessed image in BGR format
+        """
+        if not self.config.enable_processing:
+            return img
+        
+        
+        # 2. Procesamiento HSV más conservador
         img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        img_hsv[..., 2] = self.apply_clahe(img_hsv[..., 2], clip_limit=0.6, tile_grid_size=(6, 6))
-        img_hsv[..., 2] = self._gamma(img_hsv[..., 2], 1.1)
-        img_bgr = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
-        return cv2.bilateralFilter(img_bgr, 5, 30, 30)
-
+        
+        # CLAHE más sutil en el canal V
+        img_hsv[..., 2] = self.apply_clahe(
+            img_hsv[..., 2],
+            clip_limit=0.8,  # Reducido para evitar sobre-exposición
+            tile_grid_size=(4, 4)  # Reducido para evitar artefactos
+        )
+        
+        # Gamma correction más sutil
+        img_hsv[..., 2] = self._gamma(img_hsv[..., 2], 1.05)  # Reducido de 1.2 a 1.05
+        
+        # Volver a BGR
+        img = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
+        
+        # 3. Mejora de detalles conservadora
+        # Filtro bilateral con parámetros más suaves
+        img = cv2.bilateralFilter(
+            img,
+            d=5,
+            sigmaColor=25,  # Reducido de 75 a 25
+            sigmaSpace=25   # Reducido de 75 a 25
+        )
+        
+        # 4. Corrección de color y brillo final
+        # Convertir a LAB para ajuste final de luminancia
+        lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        
+        # CLAHE final muy sutil solo en luminancia
+        clahe = cv2.createCLAHE(clipLimit=0.5, tileGridSize=(4,4))
+        l = clahe.apply(l)
+        
+        # Merge canales
+        lab = cv2.merge((l,a,b))
+        img = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+        
+        return img
     def resize_image(self, img: np.ndarray) -> np.ndarray:
         """Resize image maintaining aspect ratio"""
         return cv2.resize(img, self.config.target_size, interpolation=cv2.INTER_CUBIC)
@@ -180,16 +226,15 @@ class ImageProcessor:
                     f"{processed} processed, {errors} errors")
 
 class DatasetPipeline:
-    """Main pipeline orchestrator"""
+    """Main pipeline orchestrator with flexible step execution"""
     def __init__(self, config: ProcessingConfig):
         self.config = config
         self.augmentor = ImageAugmentor(config)
         self.processor = ImageProcessor(config)
 
-    def process_dataset(self, input_path: str, intermediate_path: str, 
-                       output_path: str, classes: List[str]) -> None:
-        """Run complete dataset processing pipeline"""
-        # Step 1: Balance dataset with augmentation
+    def run_augmentation_step(self, input_path: str, intermediate_path: str, 
+                            classes: List[str]) -> None:
+        """Step 1: Run only the augmentation step"""
         logging.info("Starting dataset balancing...")
         for class_name in classes:
             class_dir = Path(input_path) / class_name
@@ -199,22 +244,45 @@ class DatasetPipeline:
             image_paths = list(glob(str(class_dir / "*.jpg")))
             self.augmentor.balance_class(class_name, image_paths, intermediate_path)
         
-        # Step 2: Preprocess and normalize images
-        logging.info("Starting image preprocessing...")
+        logging.info("Augmentation step completed.")
+
+    def run_processing_step(self, intermediate_path: str, output_path: str, 
+                          classes: List[str]) -> None:
+        """Step 2: Run only the processing and resizing step"""
+        logging.info("Starting image preprocessing and resizing...")
         for class_name in classes:
             input_dir = Path(intermediate_path) / class_name
             if not input_dir.is_dir():
                 continue
             
             self.processor.process_directory(str(input_dir), output_path, class_name)
+        
+        logging.info("Processing step completed.")
+
+    def process_dataset(self, input_path: str, intermediate_path: str, 
+                       output_path: str, classes: List[str], 
+                       run_augmentation: bool = True, 
+                       run_processing: bool = True) -> None:
+        """Run complete dataset processing pipeline with flexible step execution"""
+        if run_augmentation:
+            self.run_augmentation_step(input_path, intermediate_path, classes)
+        
+        if run_processing:
+            self.run_processing_step(intermediate_path, output_path, classes)
+        
+        logging.info("Dataset processing pipeline completed successfully.")
 
 def main():
     # Configuration
-    config = ProcessingConfig()
+    config = ProcessingConfig(
+        target_size=(128, 128),
+        enable_processing=False  # Set to False to disable processing but keep resizing
+    )
     
     # Paths
     input_path = "step1_dataset_joined"
     intermediate_path = "step2_dataset_balanced"
+    # output_path = "step3_dataset_normalized_24k_config12"
     output_path = "step3_dataset_normalized"
     
     # Classes
@@ -226,10 +294,25 @@ def main():
     # Create pipeline
     pipeline = DatasetPipeline(config)
     
-    # Run pipeline
-    pipeline.process_dataset(input_path, intermediate_path, output_path, classes)
+    # Example 1: Run only augmentation step
+    # pipeline.run_augmentation_step(input_path, intermediate_path, classes)
     
-    logging.info("Dataset processing pipeline completed successfully.")
+    # Example 2: Run only processing step
+    # pipeline.run_processing_step(intermediate_path, output_path, classes)
+    
+    # Example 3: Run both steps but disable image processing (only resize)
+    # config.enable_processing = False
+    # pipeline.process_dataset(input_path, intermediate_path, output_path, classes)
+    
+    # Example 4: Run complete pipeline with all processing enabled
+    pipeline.process_dataset(
+        input_path, 
+        intermediate_path, 
+        output_path, 
+        classes,
+        run_augmentation=False,
+        run_processing=True
+    )
 
 if __name__ == "__main__":
     main()

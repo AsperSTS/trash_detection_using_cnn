@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class ModelConfig:
     """Configuration parameters for the model and training"""
     # train_dir: str = "step3_dataset_normalized_24k_config12"
-    train_dir: str = "step3_dataset_normalized_24k_NoPreprocessing2"
+    train_dir: str = "step3_dataset_normalized"
     classes: np.ndarray = field(default_factory=lambda: np.array(["biologico", "desechos", "metal", "papel", "plasticoYtextil", "vidrio"]))
     batch_size: int = 32
     image_size: Tuple[int, int] = (128, 128)
@@ -133,79 +133,7 @@ class ModelBuilder:
         x = Dropout(0.5)(x)
         output_layer = Dense(len(config.classes), activation='softmax')(x)
 
-        # model = Sequential()
-        # # Define la capa de entrada
-        # input_layer = Input(shape=(*config.image_size, 3))
 
-        # # Enhanced model architecture with residual connections
-        # x = Conv2D(64, (3, 3), activation='relu', padding='same')(input_layer)
-        # x = MaxPooling2D(2, 2)(x)
-        # x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
-        # x = MaxPooling2D(2, 2)(x)
-        # x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
-        # # x = MaxPooling2D(2, 2)(x)
-        # # x = Conv2D(256, (3, 3), activation='relu', padding='same')(x)
-        
-        
-        
-        # # x = BatchNormalization()(x)
-        # # x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
-        # # x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
-        # # x = BatchNormalization()(x)
-        # # x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
-        # # x = BatchNormalization()(x)
-        # # x = MaxPooling2D(2, 2)(x)
-        # # x = Dropout(0.4)(x)
-
-        # x = Flatten()(x)
-        # x = Dense(256, activation='relu')(x)
-        # x = Dense(128, activation='relu')(x)
-        # x = Dense(64, activation='relu')(x)
-        # # x = BatchNormalization()(x)
-        # # x = Dropout(0.5)(x)
-        # # x = Dense(64, activation='relu')(x)
-        # # x = BatchNormalization()(x)
-        # # x = Dropout(0.5)(x)
-        # output_layer = Dense(len(config.classes), activation='softmax')(x)
-        
-        # model = tf.keras.Model(inputs=input_layer, outputs=output_layer)
-        
-        # model = Sequential()
-        # input_layer = Input(shape=(*config.image_size, 3))
-        # # Bloque 1
-        # x = Conv2D(64, (3, 3), activation='relu', padding='same')(input_layer)
-        # x = BatchNormalization()(x)
-        # x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
-        # x = BatchNormalization()(x)
-        # x = MaxPooling2D(2, 2)(x)
-        # x = Dropout(0.25)(x)
-
-        # # Bloque 2
-        # x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
-        # x = BatchNormalization()(x)
-        # x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
-        # x = BatchNormalization()(x)
-        # x = MaxPooling2D(2, 2)(x)
-        # x = Dropout(0.25)(x)
-
-        # # Bloque 3
-        # x = Conv2D(256, (3, 3), activation='relu', padding='same')(x)
-        # x = BatchNormalization()(x)
-        # x = Conv2D(256, (3, 3), activation='relu', padding='same')(x)
-        # x = BatchNormalization()(x)
-        # x = MaxPooling2D(2, 2)(x)
-        # x = Dropout(0.25)(x)
-
-        # # Capas Densas
-        # x = Flatten()(x)
-        # x = Dense(256, activation='relu')(x)
-        # x = BatchNormalization()(x)
-        # x = Dropout(0.5)(x)
-        # x = Dense(128, activation='relu')(x)
-        # x = BatchNormalization()(x)
-        # x = Dropout(0.5)(x)
-        
-        # output_layer = Dense(len(config.classes), activation='softmax')(x)
         
         model = tf.keras.Model(inputs=input_layer, outputs=output_layer)
         optimizer = Adam(
@@ -233,15 +161,7 @@ class CallbackBuilder:
         return [
             TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch=0),
             ReduceLROnPlateau(monitor='val_loss', factor=0.01, patience=1, min_lr=0.00001)
-            # ,
-            # ModelCheckpoint(
-                # run_dir / f"best_model_{execution_num}.keras",
-                # monitor='val_accuracy',
-                # save_best_only=True,
-                # mode='max'
-            # )
-            # ,
-            # EarlyStopping(monitor='val_loss', patience=7, restore_best_weights=True)
+
         ]
 
 class ResultManager:
