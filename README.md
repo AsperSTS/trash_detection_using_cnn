@@ -5,9 +5,12 @@ Sistema de clasificación automática de residuos basado en Deep Learning y visi
 ## Instalación
 
 ```bash
-git clone [repositorio]
+git clone https://github.com/AsperSTS/trash_detection_using_cnn.git
 pip install -r requirements.txt
 ```
+
+## Modificacion de parametros y rutas
+- Es necesario modificar las rutas de los datasets para que funcionen los scripts con el dataset proporcionado
 
 ## Componentes Principales
 
@@ -35,17 +38,22 @@ pip install -r requirements.txt
 - **Requisitos**: TensorFlow, NumPy, Pillow, Tkinter
 - **Ejecución**: `python useModel.py`
 
-## Estructura de Directorios
+## Estructura de Directorios para comparacion con image_comparison.py
 ```
-├── step3_dataset_normalized_24k_config12/
+├── step3_dataset_normalized_con_preprocesamiento/
 │   ├── biologico/
 │   ├── desechos/
 │   ├── metal/
 │   ├── papel/
 │   ├── plasticoYtextil/
 │   └── vidrio/
-├── step3_dataset_normalized_24k_NoPreprocessing/
-    └── [mismas subcarpetas]
+├── step3_dataset_normalized_sin_preprocesamiento/
+│   ├── biologico/
+│   ├── desechos/
+│   ├── metal/
+│   ├── papel/
+│   ├── plasticoYtextil/
+│   └── vidrio/
 ```
 
 ## Requisitos Generales
