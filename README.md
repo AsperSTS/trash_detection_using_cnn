@@ -2,6 +2,13 @@
 
 Sistema de clasificación automática de residuos basado en Deep Learning y visión artificial. Identifica y clasifica diferentes tipos de residuos (orgánico, plástico, vidrio, papel, etc.) mediante imágenes.
 
+## Resultados de pruebas
+Las metricas y graficas se encuentran en las subcarpetas 
+- graficas_etapa1_rtx2050
+- graficas_etapa2_rtx2050
+- graficas_etapa2_rtx4060
+- graficas_etapa3_rtx2050
+
 ## Instalación
 
 ```bash
