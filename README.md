@@ -17,7 +17,7 @@ pip install -r requirements.txt
 ```
 
 ## Modificacion de parametros y rutas
-- Es necesario modificar las rutas de los datasets para que funcionen los scripts con el dataset proporcionado
+- Es necesario modificar las rutas de los datasets
 
 ## Componentes Principales
 
