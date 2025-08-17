@@ -1,6 +1,6 @@
 # Waste Classification System
 
-An automated waste classification system based on Deep Learning and computer vision. Identifies and classifies different types of waste (organic, plastic, glass, paper, etc.) through images.
+A aste classification system based on Deep Learning and computer vision. Identifies and classifies different types of waste (organic, plastic, glass, paper, etc.) through images.
 
 ## Test Results
 

@@ -202,7 +202,7 @@ class ResultManager:
                 'https://www.googleapis.com/auth/spreadsheets',
                 'https://www.googleapis.com/auth/drive'
             ]
-            creds = Credentials.from_service_account_file('trashdetectionusingcnn199502-0e33c8aba5ab.json', scopes=scopes)
+            creds = Credentials.from_service_account_file('your_service_account.json', scopes=scopes)
 
             client = gspread.authorize(creds)
 
